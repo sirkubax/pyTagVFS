@@ -20,13 +20,19 @@ pyTagVFS
 
 ## Example of current usage:
 Help:
+
  ~/pyTagVFS/src/pytag.py -h
 
+
 Tag file:
+
  ~/pyTagVFS/src/pytag.py -T ~/pyTagVFS/test_dir/a/ab/photoA -t myHoliday
 
+
 Read tags form dirs:
+
  ~/pyTagVFS/src/pytag.py -r ~/pyTagVFS/test_dir/a/aa/ ~/pyTagVFS/test_dir/a/ab/
+
 
 
 Example (not implemented yet):
