@@ -16,6 +16,7 @@ pyTagVFS
 ## Future ideas:
 * GUI - initial concept - flask app browser with files as icons and click-and-tag system
 * nautilus plugin?
+* auto-taging based on EXIF in pictures or mp3 metadata
 
 
 ## Example of current usage:
