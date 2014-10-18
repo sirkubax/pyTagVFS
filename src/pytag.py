@@ -8,6 +8,7 @@ import argparse
 import glob
 import uuid
 import ntpath
+import sys
 import fileinput
 
 
@@ -30,7 +31,10 @@ def init():
     parser.add_argument("-T", "--addtag", help="file to tag")
     parser.add_argument("-x", "--removetag", help="file to tag")
     parser.add_argument("-d", "--dir", help="list of directories")
-    parser.add_argument("-m", "--mount", help="mount -t tag into provided -m dir. [ default: all tags] ")
+    parser.add_argument("-m", "--mount", help="mount [-t tag] into provided [-m dir]. ( default: all tags)  \
+                        this can bue combined with read(bulid dictionary) tags form dir [-r] or will \
+                        be based on local cache-database of tags")
+    parser.add_argument("-U", "--unmount", help="unmount  -m dir. (remove symliknks) ")
     parser.add_argument("-t", "--tags", help="list of comma-separated (\",\") tags")
 
     return parser
@@ -221,25 +225,51 @@ if __name__ == '__main__':
 
     if args.mount:
         #if args.readtags:
-            print args.mount
+            print "Mount dir: %s" % args.mount
             #finaldict = {}
             #for dir in args.readtags[0]:
             #    tagdict = readDir(dir)
 
-            if args.tags:
-                tags = args.tags.split(',')
-                for tag in tags:
-                    if tag in tagdict.keys():
-                        print "Tag:%s | Files: %s" % (tag, tagdict[tag])
-                        for file in tagdict[tag]:
-                            #ln -s
-                            filename = ntpath.basename(file)
-                            new_file_name_path = os.path.join(args.mount, filename)
-                            print new_file_name_path
-                            os.symlink(file, new_file_name_path)
-                            
-                    else:
-                        print "Tag:%s | Files: %s" % (tag, 'None')
-            else: 
-                print 'all tags'
+            (root, dirs, files) = next(os.walk(args.mount))
+            if len(dirs) > 0 or len(files) > 0:
+                print "Mount directory: %s -  not empty" % args.mount
+            else:
+                if args.tags:
+                    tags = args.tags.split(',')
+                    for tag in tags:
+                        if tag in tagdict.keys():
+                            print "Tag:%s | Files: %s" % (tag, tagdict[tag])
+                            ''' Add solution for auto-renaming symliks of multiple files with the same file name'''
+                            for file in tagdict[tag]:
+                                #ln -s
+                                filename = ntpath.basename(file)
+                                new_file_name_path = os.path.join(args.mount, filename)
+                                print new_file_name_path
+                                os.symlink(file, new_file_name_path)
+                            print "Mounted"
+                        else:
+                            print "Tag:%s | Files: %s" % (tag, 'None')
+                    
+                else: 
+                    print 'Mount all tags - not implemented yet'
+
+    if args.unmount:
+        print "unmount"
+        symlinks = []
+        (root, dirs, files) = next(os.walk(args.unmount))
+        for file in files:
+            full_path_file = os.path.join(root, file)
+            if os.path.islink(full_path_file):
+                symlinks.append(full_path_file)
+
+        print "Do you want to unlink following files:"
+        print symlinks
+        print "yes/no"
+        question = sys.stdin.readline()
+        if question.strip() == 'yes':
+            print "Unlinkikg"
+            for file in symlinks:
+                os.unlink(file)
+
+
                 
