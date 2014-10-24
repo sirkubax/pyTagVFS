@@ -36,135 +36,128 @@ def init():
                         be based on local cache-database of tags")
     parser.add_argument("-U", "--unmount", help="unmount  -m dir. (remove symliknks) ")
     parser.add_argument("-t", "--tags", help="list of comma-separated (\",\") tags")
-
     return parser
 
 
+def read_from_tag_file(tag_file):
+    """
+    Read lines from tag file, parse them, and return list of dictionaries
+    """
+    t = open(tag_file, 'r')
+    result = []
+    for line in t.readlines():
+        filename, hash, tags = line.strip().split('||')
+        tags_list = tags.split(',')
+        result.append({'filename': filename, 'hash': hash, "tags": tags_list})
+    t.close()
+    return result
+
+
 def readDir(dir):
+    """
+    Get tag file(s) form dir, read it's content, and buid [tag] -> list_of_files dictionary
+    """
     tagdict = {}
     for root, dirs, files in os.walk(dir):
         tag_files_in_dir = getTagFile(dir)
         if len(tag_files_in_dir) > 0:
             for tagfile in tag_files_in_dir:
-                t = open(tagfile, 'r')
-                for line in t.readlines():
-                    filename, hash, tags = line.strip().split('||')
-                    filename = os.path.join(dir, filename)
-                    for tag in tags.split(','):
+                current_records = read_from_tag_file(tagfile)
+                for record in current_records:
+                    filename = os.path.join(dir, record['filename'])
+                    for tag in record['tags']:
                         if tag in tagdict.keys():
                             tagdict[tag].append(filename)
                         else:
                             tagdict[tag] = [filename]
-                t.close()
     return tagdict
 
 
-def getTagFile(dir):       
-    # todo - in future we will allow multipe .tag.* files, 
+def getTagFile(dir):
+    """
+    Aquire (or create) tag file
+    """
+    # todo - in future we will allow multipe .tag.* files,
     tag_files_in_dir = glob.glob(dir + "/.tag.*")
-    #print tag_files_in_dir
     if len(tag_files_in_dir) > 1:
         print "More than one .tag in %s, consider merging" % dir
     if len(tag_files_in_dir) > 0:
         return tag_files_in_dir
     else:
-        #return openTagFile(dir)
-        os.path.join(dir, '.tag.' + str(uuid.uuid4()), 'w+')
+        fh = open(os.path.join(dir, '.tag.' + str(uuid.uuid4())), 'w+')
+        fh.close()
         tag_files_in_dir = glob.glob(dir + "/.tag.*")
         return tag_files_in_dir
     return []
 
 
-def buildDirFormTag():
-    print "CreatingDirTag"
-    for root, dirs, files in os.walk(default_dir):
-        tagFile = getTag(root)
-        print root
-        print dirs
-        print files
-        for line in tagFile.readlines():
-            print line.strip()
- 
-
-def writeTag(file_to_be_taged_full_path, tags):
-    print "WriteTag: %s" % os.path.dirname(file_to_be_taged_full_path)
+def manage_tag(file_to_be_taged_full_path, tags, function="update"):
+    '''
+    Patameters
+    file_to_be_taged_full_path
+    tags
+    function: add/update, remove
+    '''
+    print "Manage Tag: %s" % os.path.dirname(file_to_be_taged_full_path)
     dir = os.path.dirname(file_to_be_taged_full_path)
+    file_to_be_taged = ntpath.basename(file_to_be_taged_full_path)
     tag_files_in_dir = getTagFile(dir)
+    file_to_be_taged_hash = hashfile(open(file_to_be_taged_full_path, 'rb'), hashlib.sha256())
+
     if len(tag_files_in_dir) > 0:
-        writeTagHelper(file_to_be_taged_full_path, tags, tag_files_in_dir)
+        tag_file = tag_files_in_dir[0]
+        current_records = read_from_tag_file(tag_file)
+
+        if tag_record_exist(current_records, file_to_be_taged, file_to_be_taged_hash):
+            update_tag(file_to_be_taged, file_to_be_taged_hash, tags, tag_file, current_records)
+        else:
+            write_tag(file_to_be_taged, file_to_be_taged_hash, tags, tag_file)
     else:
         print "no tag file"
 
 
-def writeTagHelper(file_to_be_taged_full_path, tags, tag_files_in_dir):
-    print "Tag file: %s" % tag_files_in_dir[0]
-    fh_tagfile = open(tag_files_in_dir[0], 'a+') 
-    existingTagLines = fh_tagfile.read()
-    file_to_be_taged_hash = hashfile(open(file_to_be_taged_full_path, 'rb'), hashlib.sha256())
+def tag_record_exist(current_records, file_to_be_taged, file_to_be_taged_hash):
+    return file_to_be_taged in [x['filename'] for x in current_records] and file_to_be_taged_hash in [x['hash'] for x in current_records]
 
-    file_to_be_taged = ntpath.basename(file_to_be_taged_full_path)
 
-    # add solution for file with the same hash but changed filename (and reverse) !!!
-    if file_to_be_taged_hash in existingTagLines and file_to_be_taged in existingTagLines:
-        print "FileName: %s \t hash: %s \t EXIST" % (file_to_be_taged, file_to_be_taged_hash)
-        if updateTag(file_to_be_taged, tags, tag_files_in_dir, file_to_be_taged_hash):
-            print "FileName: %s \t hash: %s \t UPDATED" % (file_to_be_taged, file_to_be_taged_hash)
-        pass
-    else:
-        fh_tagfile.write("%s||%s||%s\n" % (file_to_be_taged, file_to_be_taged_hash, tags))
-        print "FileName: %s \t hash: %s  \t TAGGED" % (file_to_be_taged, file_to_be_taged_hash)
+def write_tag(file_to_be_taged, file_to_be_taged_hash, tags, tag_file):
+    print "Tag file: %s" % tag_file
+    fh_tagfile = open(tag_file, 'a+')
+    fh_tagfile.write("%s||%s||%s\n" % (file_to_be_taged, file_to_be_taged_hash, tags))
+    print "FileName: %s \t hash: %s  \t TAGGED" % (file_to_be_taged, file_to_be_taged_hash)
+    fh_tagfile.close()
+    
+
+def update_tag(file_to_be_taged, file_hash, arg_tags, tag_file, current_tags):
+    """
+    current_tags -> ({'filename': filename, 'hash': hash, "tags": tags_list})
+    file_to_be_taged in [x['filename'] for x in current_records] and file_to_be_taged_hash in [x['hash'] for x in current_records]
+    """
+    print 'update_tag %s' % file_to_be_taged
+    new_tag_file_path = archive__crate_new_tag_file(tag_file)
+    fh_tagfile = open(new_tag_file_path, 'a+')
+    new_tags = arg_tags.split(',')
+    for record in current_tags:
+        if file_to_be_taged == record['filename'] and file_hash == record['hash']:
+            for tag in new_tags:
+                if tag not in record['tags']:
+                    record['tags'].append(tag)
+            print "FileName: %s \t hash: %s  \t UPDATED" % (record['filename'], record['hash'])
+        fh_tagfile.write("%s||%s||%s\n" % (record['filename'], record['hash'], ','.join(record['tags'])))
     fh_tagfile.close()
 
 
-def updateTag(file_to_be_taged, arg_tags, tag_files_in_dir, file_hash):
-    print "Command line tags: %s" % arg_tags
-
-    #make a funcion out of this:
-    dir = os.path.dirname(tag_files_in_dir[0])
-    new_tag_file_path_name = os.path.join(dir, '.new.tag.' + str(uuid.uuid4()))
-    fh_new_tag_file = open(new_tag_file_path_name, 'w+')
-    fh_current_tag_file = open(tag_files_in_dir[0])
-
-    for line in fh_current_tag_file.readlines():
-        if file_to_be_taged in line and file_hash in line:
-            print "Current line: %s" % line.strip()
-            filename, hash, existingtags = line.strip().split('||')
-            new_tags = arg_tags.split(',')
-            present_tags = existingtags.split(',')
-            final_tags = list(present_tags)
-            print 'Present tags: %s\n' % (present_tags) 
-            #Should we match on the file name only?
-            if file_hash in line and file_to_be_taged in line:
-                for tag in new_tags:
-                    if tag in present_tags:
-                        print "Tag: %s, exist in %s" % (tag, present_tags)
-                    else:
-                        print "Tag: %s, DOES NOT exist in %s" % (tag, present_tags)
-                        final_tags.append(tag)
-            #print 'finalTags %s, presentTags %s' % (len(final_tags), len(present_tags)) 
-            #print 'present_tags %s' % present_tags
-
-            if len(final_tags) > len(present_tags):
-                print 'Final Tags: %s' % final_tags
-                final_tags_string = ','.join(final_tags)
-                #print 'Final Tags %s' % final_tags_string
-                fh_new_tag_file.write("%s||%s||%s\n" % (file_to_be_taged, file_hash, final_tags_string))
-            else:
-                fh_new_tag_file.write(line)
-            print "\n"
-        else:
-            fh_new_tag_file.write(line)
-
-    fh_new_tag_file.close()
-    fh_current_tag_file.close()
-    tag_file_name = ntpath.basename(tag_files_in_dir[0])
-    new_tag_file_name = ntpath.basename(new_tag_file_path_name)
-    hist_files = glob.glob(dir + "/.hist.tag.*")
-    os.rename(tag_files_in_dir[0], os.path.join(dir, '.hist' + tag_file_name))
-    os.rename(new_tag_file_path_name, os.path.join(dir, '.' + new_tag_file_name.strip('.new')))
-    for i in hist_files:
-        os.remove(i)
-    return False
+def archive__crate_new_tag_file(tag_file):
+    """
+    Archive current tag file, create new one
+    """
+    tag_file_name = ntpath.basename(tag_file)
+    dir = os.path.dirname(tag_file)
+    os.rename(tag_file, os.path.join(dir, '.hist' + tag_file_name))
+    new_tag_file_path = os.path.join(dir, '.tag.' + str(uuid.uuid4()))
+    fh = open(new_tag_file_path, 'w+')
+    fh.close()
+    return new_tag_file_path
 
 
 def hashfile(afile, hasher, blocksize=65536):
@@ -175,8 +168,7 @@ def hashfile(afile, hasher, blocksize=65536):
     return hasher.hexdigest()
 
 
-def tag_a_file(fileName, tags):  
-    #print os.getcwd()
+def normalize_a_file_name(fileName):
     fname = ""
     if os.path.isabs(fileName):
         #print "tag absolutePath file"
@@ -184,14 +176,30 @@ def tag_a_file(fileName, tags):
     else:
         #print "tag local filePath file"
         fname = os.path.join(os.getcwd(), fileName)
+
     if os.path.isfile(fname):
-        writeTag(fname, tags)
+        return fname
     else:
         print "no file %s" % fileName
+        return None
 
 
 def tagDir(dirName):  
     pass
+
+
+def mount_files(mount_dir, file_list):
+    for file in file_list:
+        print "Mounting %s" % file
+        filename = ntpath.basename(file)
+        count = len(glob.glob(os.path.join(mount_dir + filename)))
+        print os.path.join(mount_dir + filename)
+        print (glob.glob(os.path.join(mount_dir + filename)))
+        if count > 0:
+            filename += '.' + str(count + 1)
+        new_file_name_path = os.path.join(mount_dir, filename)
+        print new_file_name_path
+        os.symlink(file, new_file_name_path)
 
 
 if __name__ == '__main__':
@@ -202,7 +210,10 @@ if __name__ == '__main__':
     print "%s \n" % args 
     if args.addtag:
         if args.tags > 0:
-            tag_a_file(argsdict['addtag'], args.tags)
+            fname = normalize_a_file_name(argsdict['addtag'])
+            if fname is not None:
+                #writeTag(fname, args.tags)
+                manage_tag(fname, args.tags)
         else:
             print "No -t tags provided"
     if args.readtags:
@@ -226,9 +237,6 @@ if __name__ == '__main__':
     if args.mount:
         #if args.readtags:
             print "Mount dir: %s" % args.mount
-            #finaldict = {}
-            #for dir in args.readtags[0]:
-            #    tagdict = readDir(dir)
 
             (root, dirs, files) = next(os.walk(args.mount))
             if len(dirs) > 0 or len(files) > 0:
@@ -236,20 +244,15 @@ if __name__ == '__main__':
             else:
                 if args.tags:
                     tags = args.tags.split(',')
+                    print finaldict
                     for tag in tags:
-                        if tag in tagdict.keys():
-                            print "Tag:%s | Files: %s" % (tag, tagdict[tag])
+                        if tag in finaldict.keys():
+                            print "Tag:%s | Files: %s" % (tag, finaldict[tag])
                             ''' Add solution for auto-renaming symliks of multiple files with the same file name'''
-                            for file in tagdict[tag]:
-                                #ln -s
-                                filename = ntpath.basename(file)
-                                new_file_name_path = os.path.join(args.mount, filename)
-                                print new_file_name_path
-                                os.symlink(file, new_file_name_path)
+                            mount_files(args.mount, finaldict[tag])
                             print "Mounted"
                         else:
                             print "Tag:%s | Files: %s" % (tag, 'None')
-                    
                 else: 
                     print 'Mount all tags - not implemented yet'
 
